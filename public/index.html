@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aftertaste — a date-night agent with taste</title>
+<style>
+  :root { color-scheme: dark; --bg:#14101a; --card:#1f1830; --line:#372a52; --txt:#f2ecff; --dim:#b7a8d9; --acc:#ff7aa8; --acc2:#8be0c3; }
+  * { box-sizing: border-box; } body { margin:0; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--txt); }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 2.2rem; margin: 0 0 4px; } h1 span { color: var(--acc); }
+  .sub { color: var(--dim); margin: 0 0 24px; }
+  .badge { display:inline-block; font-size:.78rem; border:1px solid var(--line); border-radius:999px; padding:2px 10px; color:var(--acc2); margin-bottom:16px; }
+  form { background: var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; display:grid; gap:12px; }
+  label { font-size:.85rem; color:var(--dim); display:block; margin-bottom:4px; }
+  input, select { width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--line); background:#150f22; color:var(--txt); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; } .chip { border:1px solid var(--line); background:#150f22; color:var(--dim); border-radius:999px; padding:3px 10px; cursor:pointer; font-size:.82rem; }
+  .chip.on { color:#14101a; background:var(--acc); border-color:var(--acc); font-weight:600; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; } button { border:0; border-radius:10px; padding:11px 18px; font-weight:700; cursor:pointer; }
+  .go { background:var(--acc); color:#22101a; } .ghost { background:transparent; color:var(--dim); border:1px solid var(--line); }
+  .leg { margin-top:26px; } .leg h2 { font-size:1.05rem; color:var(--acc2); margin:0 0 10px; text-transform:uppercase; letter-spacing:.06em; }
+  .pick { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+  .pick.top { border-color:var(--acc); } .pick h3 { margin:0; font-size:1.1rem; } .meta { color:var(--dim); font-size:.85rem; }
+  .why { margin:8px 0 0; font-size:.92rem; } .score { float:right; color:var(--acc); font-weight:700; }
+  .steps { color:var(--dim); font-size:.85rem; margin-top:20px; white-space:pre-wrap; }
+  .err { color:#ff9c9c; margin-top:16px; } footer { color:var(--dim); font-size:.8rem; margin-top:40px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="badge" id="modeBadge">checking data source…</div>
+  <h1>After<span>taste</span></h1>
+  <p class="sub">A date-night agent with taste. Tell it what <em>they</em> love — an artist, a film — and it plans the whole night in their taste language: dinner, a film, the walk-home soundtrack, a nightcap. Every pick shows the taste thread that connects it to them, measured in Qloo's taste graph, not guessed by a language model.</p>
+
+  <form id="f">
+    <div>
+      <label>Things they love (pick up to 4, or type your own below)</label>
+      <div class="chips" id="chips"></div>
+    </div>
+    <input id="custom" placeholder="…or type one: e.g. Björk, Spirited Away">
+    <div>
+      <label>City</label>
+      <select id="city"></select>
+    </div>
+    <div class="row">
+      <button class="go" type="submit">Plan the night</button>
+      <button class="ghost" type="button" id="ablate">Show me the night WITHOUT Qloo</button>
+    </div>
+  </form>
+
+  <div id="out"></div>
+  <footer>Powered by the Qloo Taste AI API (250M+ cultural entities). “Without Qloo” ranks by raw popularity alone — the generic-agent baseline. Build Disclosure: AI-built by the Tree / Muse agent fleet, directed by Rene Turcios.</footer>
+</main>
+<script>
+const picked = new Set();
+const $ = s => document.querySelector(s);
+fetch('/api/catalog').then(r => r.json()).then(c => {
+  $('#modeBadge').textContent = c.mode === 'live' ? '● LIVE — Qloo Taste AI API' : '● SAMPLE DATA mode — set QLOO_API_KEY for live Qloo results';
+  const chips = $('#chips');
+  for (const s of c.seeds) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = s.name;
+    b.onclick = () => { picked.has(s.name) ? picked.delete(s.name) : (picked.size < 4 && picked.add(s.name)); b.classList.toggle('on'); };
+    chips.appendChild(b);
+  }
+  $('#city').innerHTML = c.cities.map(x => `<option>${x}</option>`).join('');
+});
+async function run(generic) {
+  const tastes = [...picked]; const custom = $('#custom').value.trim(); if (custom) tastes.push(custom);
+  const out = $('#out'); out.innerHTML = '<p class="sub">Planning…</p>';
+  const r = await fetch('/api/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tastes, city: $('#city').value, generic }) });
+  const p = await r.json();
+  if (!p.ok) { out.innerHTML = `<p class="err">${p.error}</p>`; return; }
+  out.innerHTML =
+    `<p class="sub" style="margin-top:22px">A night for someone who loves <b>${p.seeds.join(' · ')}</b> — ${p.city}. ${p.dataSource ? '(' + p.dataSource + ')' : ''}</p>` +
+    p.legs.map(leg => `<section class="leg"><h2>${leg.label}</h2>` + leg.picks.map((pick, i) =>
+      `<article class="pick ${i === 0 ? 'top' : ''}"><span class="score">${pick.score.toFixed(2)}</span><h3>${pick.name}</h3>
+       <div class="meta">${[pick.cuisine || pick.style || pick.year || '', pick.city || '', pick.price || ''].filter(Boolean).join(' · ')}</div>
+       <p>${pick.blurb || ''}</p><p class="why"><b>Why them:</b> ${pick.why}</p></article>`).join('') + '</section>').join('') +
+    `<div class="steps">Agent trace:\n${p.steps.map(s => '→ ' + s.detail).join('\n')}</div>`;
+}
+$('#f').addEventListener('submit', e => { e.preventDefault(); run(false); });
+$('#ablate').addEventListener('click', () => run(true));
+</script>
+</body>
+</html>
